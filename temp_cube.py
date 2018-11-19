@@ -1,11 +1,12 @@
-from OpenGL.GL import *
-from OpenGL.GLUT import *
+import random
 import numpy as np
-from framework import *
+from OpenGL.GL import *
+from OpenGL.GLU import *
+from OpenGL.GLUT import *
 
+
+num_points = 36
 vertex_dim = 4
-num_points = None
-theta = np.array([0., 0., 0.], dtype="float32")
 
 # String containing vertex shader program written in GLSL
 strVertexShader = """
@@ -31,6 +32,50 @@ void main()
 }
 """
 
+def createShader(shader_type, shader_file):
+    """Create and compile a shader."""
+    shader = glCreateShader(shader_type)
+    glShaderSource(shader, shader_file)
+
+    glCompileShader(shader)
+
+    status = None
+    glGetShaderiv(shader, GL_COMPILE_STATUS, status)
+    if status == GL_FALSE:
+        strInfoLog = glGetShaderInfoLog(shader)
+        strShaderType = ""
+        if shader_type is GL_VERTEX_SHADER:
+            strShaderType = "vertex"
+        elif shader_type is GL_GEOMETRY_SHADER:
+            strShaderType = "geometry"
+        elif shader_type is GL_FRAGMENT_SHADER:
+            strShaderType = "fragment"
+
+        print "Compilation failure for " + strShaderType + " shader:\n" + strInfoLog
+
+    return shader
+
+
+def createProgram(shader_list):
+    """Compiles shaders and returns the compiled program."""
+    program = glCreateProgram()
+
+    for shader in shader_list:
+        glAttachShader(program, shader)
+
+    glLinkProgram(program)
+
+    status = glGetProgramiv(program, GL_LINK_STATUS)
+    if status == GL_FALSE:
+        str_info_log = glGetProgramInfoLog(program)
+        print "Linker failure: \n" + str_info_log
+
+    for shader in shader_list:
+        glDetachShader(program, shader)
+
+    return program
+
+
 def get_cube_vertices(width=1.):
     assert isinstance(width, (int, float))
     vertices = np.array([[-.5, -.5, 0.5, 1.],
@@ -55,11 +100,12 @@ def get_cube_vertices(width=1.):
     # Number of indices required for triangles
     num_indices = (num_indices - 2) * 3
 
-    points = np.zeros(((num_faces * num_indices), 4), dtype="float32")
+    points = np.zeros(((num_faces * num_indices), vertex_dim))
     for i in range(num_faces):
         points[i*num_indices:(i+1)*num_indices] = quad(faces[i], vertices)
 
     return points
+
 
 def quad(face, vertices):
     """Construct a face by partitioning 4 vertices into 2 triangles."""
@@ -70,36 +116,10 @@ def quad(face, vertices):
     return points
 
 
+# Sierpinski gasket
 def init():
-    width = 1.
-    points = get_cube_vertices(width)
-    global num_points
-    num_points = points.shape[0]
-    points = points.flatten()
-    print num_points
+    points = get_cube_vertices().flatten()
     print points
-    """
-    global num_points
-    num_points = 36
-    # points = np.array([0.5, 0.5, -0.5, 1.0,
-                       # 0.5, -0.5, -0.5, 1.0,
-                       # -0.5, -0.5, 0.5, 1.0,
-                       # -0.5, -0.5, -0.5, 1.0,
-                       # -0.5, 0.5, 0.5, 1.0,
-                       # 0.5, 0.5, 0.5, 1.0], dtype="float32")
-    points = np.array([-0.5, 0.5, 0.5, 1., -0.5, -0.5, 0.5, 1.,  0.5, -0.5, 0.5, 1., -0.5, 0.5, 0.5,
-                       1.,  0.5, -0.5, 0.5, 1., 0.5, 0.5, 0.5, 1., 0.5, 0.5, 0.5, 1., 0.5, -0.5,
-                       0.5, 1., 0.5, -0.5, -0.5, 1., 0.5, 0.5, 0.5, 1., 0.5, -0.5, -0.5, 1., 0.5,
-                       0.5, -0.5, 1., 0.5, -0.5, 0.5, 1., -0.5, -0.5, 0.5, 1., -0.5, -0.5, -0.5, 1.,
-                       0.5, -0.5, 0.5, 1., -0.5, -0.5, -0.5, 1., 0.5, -0.5, -0.5, 1., 0.5, 0.5, -0.5,
-                       1., -0.5, 0.5, -0.5, 1., -0.5, 0.5, 0.5, 1., 0.5, 0.5, -0.5, 1., -0.5, 0.5,
-                       0.5, 1., 0.5, 0.5, 0.5, 1., -0.5, -0.5, -0.5, 1., -0.5, 0.5, -0.5, 1., 0.5,
-                       0.5, -0.5, 1., -0.5, -0.5, -0.5, 1., 0.5, 0.5, -0.5, 1., 0.5, -0.5, -0.5, 1.,
-                       -0.5, 0.5, -0.5, 1., -0.5, -0.5, -0.5, 1., -0.5, -0.5, 0.5, 1., -0.5, 0.5, -0.5,
-                       1., -0.5, -0.5, 0.5, 1., -0.5, 0.5, 0.5, 1.], dtype="float32")
-    width = 1.0
-    print points
-    """
 
     # Create the shaders and program
     shader_list = []
@@ -108,6 +128,7 @@ def init():
     program = createProgram(shader_list)
     for shader in shader_list:
         glDeleteShader(shader)
+
     glUseProgram(program)
 
     # Setup the vertex buffer for storing vertex coordinates
@@ -123,24 +144,15 @@ def init():
     glEnableVertexAttribArray(loc)
     glVertexAttribPointer(loc, vertex_dim, GL_FLOAT, GL_FALSE, 0, None)
 
-    # Enable depth test and cull invisible faces
-    glEnable(GL_CULL_FACE)
-    glCullFace(GL_BACK)
-    glFrontFace(GL_CW)
-
-    glEnable(GL_DEPTH_TEST)
-    glDepthMask(GL_TRUE)
-    glDepthFunc(GL_LEQUAL)
-    glDepthRange(0.0, 0.5 * width)
-    glClearColor(1., 1., 1., 1.)
-
 
 def display():
     """Draw the points on the display."""
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-    glDrawArrays(GL_TRIANGLES, 0, num_points)
-    assert glGetError() == GL_NO_ERROR
-    glFlush()       # Because we are using double buffering
+    glClearColor(0., 0., 0., 0.)
+    glClear(GL_COLOR_BUFFER_BIT)
+    glDrawArrays(GL_POINTS, 0, num_points)
+
+    glutSwapBuffers()
+    glutPostRedisplay()     # redisplay the window
 
 
 def reshape(w, h):
@@ -157,7 +169,7 @@ def keyboard(key, x, y):
 
 def main():
     glutInit()
-    glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH)
+    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE)
     glutInitWindowSize(640, 480)
     glutCreateWindow("simple OpenGL example")
 

@@ -5,7 +5,7 @@ from OpenGL.GLUT import *
 
 
 num_points = 5000
-vertex_dim = 2
+vertex_dim = 4
 
 # String containing vertex shader program written in GLSL
 strVertexShader = """
@@ -84,6 +84,10 @@ def init():
         vertices = np.array([[-1., -1., 0.],
                              [0., 1., 0.],
                              [1., -1., 0.]])
+    elif vertex_dim == 4:
+        vertices = np.array([[-1., -1., 0., 1.],
+                             [0., 1., 0., 1.],
+                             [1., -1., 0., 1.]])
 
     u = 0.5 * (vertices[0] + vertices[1])
     v = 0.5 * (vertices[0] + vertices[2])
@@ -118,7 +122,6 @@ def init():
 
     # Initialize the vertex position attribute from the vertex shader
     loc = glGetAttribLocation(program, "vPosition")
-    print loc
     glEnableVertexAttribArray(loc)
     glVertexAttribPointer(loc, vertex_dim, GL_FLOAT, GL_FALSE, 0, None)
 
