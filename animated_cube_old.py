@@ -19,10 +19,6 @@ zFar = 3.0
 zCamera = 1.5
 zAdd = 0.01
 
-view_reference_point = np.array([0., 0., zCamera])
-view_plane_normal = np.array([0., 0., 1.])
-view_up_vector = np.array([0., 1., 0.])
-
 vModelView = None
 vPerspective = None
 
@@ -87,38 +83,6 @@ def quad(face, vertices):
     return points
 
 
-def get_perspective(fov_y, aspect_ratio, near, far):
-    mat = np.zeros((4, 4), dtype="float32")
-    top = near * np.tan(fov_y)
-    right = top * aspect_ratio
-    mat[0, 0] = float(near) / right
-    mat[1, 1] = float(near) / top
-    mat[2, 2] = -float(far + near) / (far - near)
-    mat[2, 3] = -1
-    mat[3, 2] = -2.*far*near / (far - near)
-
-    return mat
-
-
-def get_model_view(vrp, vpn, vup):
-    v = vup - np.dot(vup, vpn) / np.dot(vpn, vpn) * vpn
-    v = v / np.linalg.norm(v)
-    n = vpn / np.linalg.norm(vpn)
-
-    return get_model_view_from_unitvectors(vrp, n, v)
-
-
-def get_model_view_from_unitvectors(p, n, v):
-    """n and v must be unit vectors and must be orthogonal"""
-    u = np.cross(v, n)
-
-    mat = np.zeros((4, 4), dtype="float32")
-    mat[:3,:3] = np.vstack((u, v, n))
-    mat[:3, 3] = np.dot(-np.vstack((u, v, n)), p)
-    mat[3, 3] = 1.
-    return mat
-
-
 def init():
     width = 1.
     points = get_cube_vertices(width)
@@ -128,7 +92,7 @@ def init():
 
     # Create the shaders and program
     shader_list = []
-    shader_list.append(loadShader(GL_VERTEX_SHADER, "rotating_quat.vert"))
+    shader_list.append(loadShader(GL_VERTEX_SHADER, "rotating_quat_old.vert"))
     shader_list.append(createShader(GL_FRAGMENT_SHADER, strFragmentShader))
     program = createProgram(shader_list)
     for shader in shader_list:
@@ -141,11 +105,15 @@ def init():
     quaternion = get_quaternion(unitvect, theta)
     glUniform4fv(vQuat, 1, quaternion)
 
+    """
     # Link model view and perspective matrices
-    global vPerspective, vModelView
     vPerspective = glGetUniformLocation(program, "vPerspective")
     vModelView = glGetUniformLocation(program, "vModelView")
-
+    """
+    global vPerspective
+    vPerspective = glGetUniformLocation(program, "vPerspective")
+    perspective = get_perspective(fovy, aspect, zNear, zFar)
+    glUniformMatrix4fv(vPerspective, 1, GL_TRUE, perspective)
 
     # Setup the vertex buffer for storing vertex coordinates
     position_buffer = glGenBuffers(1)
@@ -161,11 +129,9 @@ def init():
     glVertexAttribPointer(loc, vertex_dim, GL_FLOAT, GL_FALSE, 0, None)
 
     # Enable depth test and cull invisible faces
-    """
     glEnable(GL_CULL_FACE)
     glCullFace(GL_BACK)
     glFrontFace(GL_CW)
-    """
 
     glEnable(GL_DEPTH_TEST)
     glDepthMask(GL_TRUE)
@@ -174,10 +140,26 @@ def init():
     glClearColor(1., 1., 1., 1.)
 
 
+def get_perspective(fov_y, aspect_ratio, near, far):
+    mat = np.zeros((4, 4))
+    top = near * np.tan(fov_y)
+    right = top * aspect_ratio
+    mat[0, 0] = float(near) / right
+    mat[1, 1] = float(near) / top
+    mat[2, 2] = -float(far + near) / (far - near)
+    mat[2, 3] = -1
+    mat[3, 2] = -2.*far*near / (far - near)
+
+    return mat
+
+
+def get_view_matrix(vrp, vpn, vup):
+
+
+
 def display():
     """Draw the points on the display."""
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-
     # Calculate and send quaternion
     global theta, quaternion
     theta += 0.01
@@ -185,20 +167,21 @@ def display():
         theta = 0.0
     quaternion = get_quaternion(unitvect, theta)
     glUniform4fv(vQuat, 1, quaternion)
-    
     # Get model view and perspective matrices
-    global zCamera, zAdd, view_reference_point
+    """
+    global zCamera, zAdd
     zCamera += zAdd
     if zCamera > 3.0:
-        zAdd = -0.01
+        zAdd = -0.1
     elif zCamera < 0.75:
-        zAdd = 0.01
-    view_reference_point[2] = zCamera
-    model_view = get_model_view_from_unitvectors(view_reference_point, view_plane_normal,
-                                                 view_up_vector)
+        zAdd = 0.1
+    model_view = gluLookAt(0., 0., zCamera,  # Camera position
+                           0., 0., 0.,       # Reference point
+                           0., 1., 0.)       # Up direction
+    perspective = gluPerspective(fovy, aspect, zNear, zFar)
     glUniformMatrix4fv(vModelView, 1, GL_TRUE, model_view)
-    perspective = get_perspective(fovy, aspect, zNear, zFar)
     glUniformMatrix4fv(vPerspective, 1, GL_TRUE, perspective)
+    """
 
     # Draw the cube
     glDrawArrays(GL_TRIANGLES, 0, num_points)

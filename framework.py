@@ -41,7 +41,7 @@ def loadShader(shaderType, shaderFile):
 
     status = glGetShaderiv(shader, GL_COMPILE_STATUS)
     if status == GL_FALSE:
-        strInfoLog = glGetShaderInforLog(shader)
+        strInfoLog = glGetShaderInfoLog(shader)
         strShaderType = ""
         if shaderType is GL_VERTEX_SHADER:
             strShaderType = "vertex"
