@@ -2,7 +2,15 @@
 
 in vec4 vPosition;
 uniform vec4 vQuat;
+uniform mat4 vModelView;
 uniform mat4 vPerspective;
+
+in vec3 vNormal;
+out vec3 N, L, E;
+uniform vec4 lightDirection;
+
+in vec2 vTexCoord;
+out vec2 fTexCoord;
 
 vec4 quat_conj(vec4 q)
 {
@@ -19,18 +27,32 @@ vec4 quat_mult(vec4 q1, vec4 q2)
   return qr;
 }
 
-vec4 rotate_by_q(vec4 q)
+vec4 rotate_by_q(vec4 q, vec3 r)
 {
   vec4 q_conj = quat_conj(q);
-  vec4 q_pos = vec4(vPosition.x, vPosition.y, vPosition.z, 0);
+  vec4 q_pos = vec4(r.x, r.y, r.z, 0);
   vec4 q_tmp = quat_mult(vQuat, q_pos);
   return quat_mult(q_tmp, q_conj);
 }
 
 void main()
 {
-  vec4 q_pos = rotate_by_q(vQuat);
+  // Rotation
+  vec4 q_pos = rotate_by_q(vQuat, vPosition.xyz);
   q_pos.w = vPosition.w;
 
-  gl_Position = vPerspective * q_pos;
+  // Rotate normals
+  vec4 normal = rotate_by_q(vQuat, vNormal);
+
+  // Lighting
+  N = normalize(normal.xyz);
+  // L = normalize(lightPosition - vPosition).xyz;
+  L = normalize(lightDirection.xyz);
+  E = -normalize(vPosition.xyz);
+
+  // Position
+  gl_Position = vPerspective * vModelView * q_pos;
+
+  // Texture map
+  fTexCoord = vTexCoord;
 }

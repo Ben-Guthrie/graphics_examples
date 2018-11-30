@@ -33,7 +33,7 @@ strFragmentShader = """
 out vec4 outputColor;
 void main()
 {
-    outputColor = vec4(1.0, 0.0, 0.0, 1.0);
+    outputColor = vec4(0.5, 0.5, 0.5, 0.5);
 }
 """
 
@@ -171,7 +171,7 @@ def init():
     glDepthMask(GL_TRUE)
     glDepthFunc(GL_LEQUAL)
     glDepthRange(0.0, 0.5 * width)
-    glClearColor(1., 1., 1., 1.)
+    glClearColor(0., 0., 0., 0.)
 
 
 def display():
@@ -185,13 +185,13 @@ def display():
         theta = 0.0
     quaternion = get_quaternion(unitvect, theta)
     glUniform4fv(vQuat, 1, quaternion)
-    
+
     # Get model view and perspective matrices
     global zCamera, zAdd, view_reference_point
     zCamera += zAdd
-    if zCamera > 3.0:
+    if zCamera > 4.0:
         zAdd = -0.01
-    elif zCamera < 0.75:
+    elif zCamera < 1.0:
         zAdd = 0.01
     view_reference_point[2] = zCamera
     model_view = get_model_view_from_unitvectors(view_reference_point, view_plane_normal,

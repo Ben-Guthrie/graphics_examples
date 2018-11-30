@@ -2,6 +2,7 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 import numpy as np
+import cv2
 from framework import *
 from ctypes import c_void_p
 
@@ -18,7 +19,6 @@ zNear = 0.5
 zFar = 10.0
 
 xCamera = 5.0
-yCamera = 0.0
 xAdd = 0.01
 
 view_reference_point = np.array([xCamera, 0., 0.])
@@ -35,8 +35,8 @@ def setup_lighting(program):
     light_direction = np.array([1.0, 0.5, 0.3, 0.0], dtype="float32")
 
     material_ambient = np.array([1.0, 1.0, 1.0, 1.0], dtype="float32")
-    material_diffuse = np.array([1.0, 0.8, 0.0, 1.0], dtype="float32")
-    material_specular = np.array([1.0, 0.8, 0.0, 1.0], dtype="float32")
+    material_diffuse = np.array([0.8, 0.7, 0.6, 1.0], dtype="float32")
+    material_specular = np.array([0.9, 0.8, 0.7, 1.0], dtype="float32")
     material_shininess = 100.0
 
     ambient_product = light_ambient * material_ambient
@@ -93,12 +93,14 @@ def get_cube_vertices(width=1.):
 
     points = np.zeros(((num_faces * num_indices), 4), dtype="float32")
     normals = np.zeros(((num_faces * num_indices), 3), dtype="float32")
+    texcoords = np.zeros(((num_faces * num_indices), 2), dtype="float32")
     for i in range(num_faces):
-        points_i, normals_i = quad(faces[i], vertices)
+        points_i, normals_i, texcoords_i = quad(faces[i], vertices)
         points[i*num_indices:(i+1)*num_indices] = points_i
         normals[i*num_indices:(i+1)*num_indices] = normals_i
+        texcoords[i*num_indices:(i+1)*num_indices] = texcoords_i
 
-    return points, normals
+    return points, normals, texcoords
 
 def quad(face, vertices):
     """Construct a face by partitioning 4 vertices into 2 triangles."""
@@ -108,14 +110,23 @@ def quad(face, vertices):
     points = vertices[indices]
     u = vertices[b] - vertices[a]
     v = vertices[c] - vertices[b]
+
     normal = np.cross(u[:3], v[:3])
     normal = normal / np.linalg.norm(normal)
     normals = np.tile(normal, (6, 1))
-    return points, normals
+
+    texcoords = np.array([[0, 0],
+                          [0, 1],
+                          [1, 1],
+                          [0, 0],
+                          [1, 1],
+                          [1, 0]])
+    return points, normals, texcoords
 
 
 def get_perspective(fov_y, aspect_ratio, near, far):
     mat = np.zeros((4, 4), dtype="float32")
+    fov_y *= np.pi/180.
     top = near * np.tan(fov_y)
     right = top * aspect_ratio
     mat[0, 0] = float(near) / right
@@ -146,17 +157,44 @@ def get_model_view_from_unitvectors(p, n, v):
     return mat
 
 
+def configure_texture(filename="aluminium_texture.jpg"):
+    image = cv2.imread(filename)
+    image = image[...,::-1]     # Convert BGR -> RGB
+    ix, iy = image.shape[0], image.shape[1]
+
+    # Generate a texture ID
+    texture = glGenTextures(1)
+    # Make it current
+    glBindTexture(GL_TEXTURE_2D, texture)
+    # Flip image to column major
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+    # Copy the texture into the current texture ID
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ix, iy, 0, GL_RGBA, GL_UNSIGNED_BYTE, image)
+    # Set the texture to repeat outside the range [0., 1.]
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+    # Generate mipmaps
+    glGenerateMipmap(GL_TEXTURE_2D)
+    # Set the magnification and minimisation options
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+    # glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR)
+
+    return texture
+
+
+
 def init():
     width = 1.
-    points, normals = get_cube_vertices(width)
+    points, normals, texcoords = get_cube_vertices(width)
     global num_points
     num_points = points.shape[0]
     buffer_data = np.concatenate((points, normals), axis=None)
 
     # Create the shaders and program
     shader_list = []
-    shader_list.append(loadShader(GL_VERTEX_SHADER, "rotating_quat_lighting.vert"))
-    shader_list.append(loadShader(GL_FRAGMENT_SHADER, "lighting.frag"))
+    shader_list.append(loadShader(GL_VERTEX_SHADER, "textured_rotating.vert"))
+    shader_list.append(loadShader(GL_FRAGMENT_SHADER, "textured_lighting.frag"))
     program = createProgram(shader_list)
     for shader in shader_list:
         glDeleteShader(shader)
@@ -176,7 +214,6 @@ def init():
     vModelView = glGetUniformLocation(program, "vModelView")
 
 
-    # TODO: setup buffer for positions and normals
     # Setup the vertex buffer for storing vertex coordinates
     position_buffer = glGenBuffers(1)
     glBindBuffer(GL_ARRAY_BUFFER, position_buffer)
@@ -196,6 +233,19 @@ def init():
     norm = glGetAttribLocation(program, "vNormal")
     glEnableVertexAttribArray(norm)
     glVertexAttribPointer(norm, 3, GL_FLOAT, GL_FALSE, 0, normal_data_offset)
+
+    # Setup the texture mapping
+    tBuffer = glGenBuffers(1)
+    glBindBuffer(GL_ARRAY_BUFFER, tBuffer)
+    glBufferData(GL_ARRAY_BUFFER, texcoords.flatten(), GL_STATIC_DRAW)
+    vTexCoord = glGetAttribLocation(program, "vTexCoord")
+    glEnableVertexAttribArray(vTexCoord)
+    glVertexAttribPointer(vTexCoord, 2, GL_FLOAT, GL_FALSE, 0, None)
+    # Load the texture image and configure parameters
+    configure_texture()
+    # link to the sampler
+    glUniform1i(glGetUniformLocation(program, "texMap"), 0)
+
 
     # Enable depth test and cull invisible faces
     """
@@ -226,13 +276,11 @@ def display():
     # Get model view and perspective matrices
     global xCamera, yCamera, xAdd, view_reference_point
     xCamera += xAdd
-    yCamera -= xAdd
     if xCamera > 4.0:
         xAdd = -0.01
-    elif xCamera < 1.0:
+    elif xCamera < 1.5:
         xAdd = 0.01
     view_reference_point[0] = xCamera
-    view_reference_point[1] = yCamera
     model_view = get_model_view_from_unitvectors(view_reference_point, view_plane_normal,
                                                  view_up_vector)
     glUniformMatrix4fv(vModelView, 1, GL_TRUE, model_view)
